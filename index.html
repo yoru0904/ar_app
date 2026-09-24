@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MindAR WebAR Demo</title>
+
+  <!-- A-Frame 1.4.2 & MindAR 1.2.5 -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+  <style>
+    html, body {
+      position: relative;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    a-scene {
+      width: 100vw !important;
+      height: 100vh !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+    }
+
+    video {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      object-fit: cover !important;
+    }
+
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.9);
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .start-card {
+      background: #ffffff;
+      padding: 32px 24px;
+      border-radius: 18px;
+      text-align: center;
+      max-width: 290px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .start-card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: #1e293b;
+    }
+
+    .start-card p {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0 0 20px;
+      line-height: 1.5;
+    }
+
+    #start-btn {
+      appearance: none;
+      border: none;
+      background: #2563eb;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 30px;
+      border-radius: 9999px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);
+    }
+
+    #status-bar {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75);
+      color: #ffffff;
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: bold;
+      z-index: 10000;
+      pointer-events: none;
+      white-space: nowrap;
+      transition: background 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="status-bar">カメラ起動準備完了</div>
+
+  <div id="overlay">
+    <div class="start-card">
+      <h2>WebAR デモ</h2>
+      <p>ボタンを押してカメラを許可し、マーカーにかざしてください。キャラクターをタップすると反応します。</p>
+      <button id="start-btn">ARを開始する</button>
+    </div>
+  </div>
+
+  <a-scene
+    id="ar-scene"
+    mindar-image="imageTargetSrc: ./mark.mind; autoStart: false; uiLoading: no; uiError: yes;"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <img id="tex-normal" src="./image/test.png" crossorigin="anonymous">
+      <img id="tex-closed" src="./image/test.2png" crossorigin="anonymous">
+      <img id="tex-excl"   src="./image/test3.png" crossorigin="anonymous">
+    </a-assets>
+
+    <!-- タップ検出: カメラからのレイを .clickable に飛ばす -->
+    <a-camera position="0 0 0" look-controls="enabled: false"
+              cursor="rayOrigin: mouse; fuse: false"
+              raycaster="objects: .clickable; far: 100"></a-camera>
+
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+
+      <!-- 浮遊アニメーション担当（位置のみ） -->
+      <a-entity
+        id="floater"
+        position="0 0 0.5"
+        animation="property: position; from: 0 0 0.5; to: 0 0 2; dir: alternate; dur: 3000; easing: easeInOutQuad; loop: true">
+
+        <!-- ぽよっ演出担当（スケール・少しの跳ねのみ） -->
+        <a-entity id="poyo" position="0 0 0" scale="1 1 1">
+
+          <!-- 通常 -->
+          <a-plane id="char-normal" class="clickable"
+            src="#tex-normal" position="0 0 0" width="1" height="1"
+            material="transparent: true; alphaTest: 0.1; side: double;"></a-plane>
+
+          <!-- 目を閉じた差分（初期は非表示） -->
+          <a-plane id="char-closed" class="clickable"
+            src="#tex-closed" position="0 0 0" width="1" height="1" visible="false"
+            material="transparent: true; alphaTest: 0.1; side: double;"></a-plane>
+
+          <!-- 「！」（キャラより少し手前に重ねる。初期は非表示） -->
+          <a-plane id="excl"
+            src="#tex-excl" position="0 0 0.01" width="1" height="1" visible="false"
+            material="transparent: true; alphaTest: 0.1; side: double;"></a-plane>
+
+        </a-entity>
+      </a-entity>
+
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const sceneEl    = document.querySelector('#ar-scene');
+    const startBtn   = document.querySelector('#start-btn');
+    const overlay    = document.querySelector('#overlay');
+    const statusBar  = document.querySelector('#status-bar');
+    const targetEl   = document.querySelector('#target');
+
+    const poyoEl     = document.querySelector('#poyo');
+    const charNormal = document.querySelector('#char-normal');
+    const charClosed = document.querySelector('#char-closed');
+    const exclEl     = document.querySelector('#excl');
+
+    /* ---------- 調整用の設定 ---------- */
+    const REACTION_MS = 900;   // 目を閉じて「！」を出している時間
+    const POYO_MS     = 700;   // ぽよっ動作の長さ（REACTION_MS以下）
+
+    // ぽよっのキーフレーム: [時間(0-1), scaleX, scaleY, 跳ね(y)]
+    const POYO_KEYS = [
+      [0.00, 1.00, 1.00, 0.00],
+      [0.20, 1.14, 0.84, 0.00],  // ぎゅっと縮んで横に広がる
+      [0.45, 0.92, 1.12, 0.07],  // 縦に伸びて少し跳ねる
+      [0.70, 1.05, 0.96, 0.00],  // 着地
+      [1.00, 1.00, 1.00, 0.00]   // 元に戻る
+    ];
+    /* ---------------------------------- */
+
+    let reacting = false;  // 連打防止ロック
+
+    const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    function playPoyo(duration) {
+      return new Promise(resolve => {
+        const start = performance.now();
+        function frame(now) {
+          const p = Math.min((now - start) / duration, 1);
+          let i = 0;
+          while (i < POYO_KEYS.length - 2 && p > POYO_KEYS[i + 1][0]) i++;
+          const a = POYO_KEYS[i], b = POYO_KEYS[i + 1];
+          const local = easeInOut((p - a[0]) / (b[0] - a[0]));
+          const sx = a[1] + (b[1] - a[1]) * local;
+          const sy = a[2] + (b[2] - a[2]) * local;
+          const py = a[3] + (b[3] - a[3]) * local;
+          poyoEl.object3D.scale.set(sx, sy, 1);
+          poyoEl.object3D.position.set(0, py, 0);
+          if (p < 1) {
+            requestAnimationFrame(frame);
+          } else {
+            poyoEl.object3D.scale.set(1, 1, 1);
+            poyoEl.object3D.position.set(0, 0, 0);
+            resolve();
+          }
+        }
+        requestAnimationFrame(frame);
+      });
+    }
+
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+
+    function setReactionVisual(on) {
+      charNormal.object3D.visible = !on;
+      charClosed.object3D.visible = on;
+      exclEl.object3D.visible     = on;
+      // A-Frameの属性側も同期（raycasterや再描画のずれ防止）
+      charNormal.setAttribute('visible', !on);
+      charClosed.setAttribute('visible', on);
+      exclEl.setAttribute('visible', on);
+    }
+
+    async function react() {
+      if (reacting) return;      // リアクション中のタップは無視
+      reacting = true;
+      try {
+        setReactionVisual(true); // test.png2 + test3.png
+        await Promise.all([playPoyo(POYO_MS), wait(REACTION_MS)]);
+      } finally {
+        setReactionVisual(false); // 「！」を消して test.png に戻す
+        poyoEl.object3D.scale.set(1, 1, 1);
+        poyoEl.object3D.position.set(0, 0, 0);
+        reacting = false;         // 浮遊アニメは常時動作しているのでそのまま通常状態へ
+      }
+    }
+
+    charNormal.addEventListener('click', react);
+    charClosed.addEventListener('click', react);
+
+    /* ---------- AR起動 ---------- */
+    startBtn.addEventListener('click', async () => {
+      statusBar.textContent = 'カメラ初期化中...';
+      const arSystem = sceneEl.systems['mindar-image-system'];
+      try {
+        await arSystem.start();
+        overlay.style.display = 'none';
+        statusBar.textContent = 'マーカーを探索中...';
+      } catch (err) {
+        console.error(err);
+        statusBar.textContent = '起動エラー: ' + err.message;
+      }
+    });
+
+    targetEl.addEventListener('targetFound', () => {
+      statusBar.textContent = '★ マーカー認識中！ キャラをタップ';
+      statusBar.style.background = 'rgba(22, 163, 74, 0.85)';
+    });
+
+    targetEl.addEventListener('targetLost', () => {
+      statusBar.textContent = 'マーカーを見失いました';
+      statusBar.style.background = 'rgba(0, 0, 0, 0.75)';
+    });
+  </script>
+</body>
+</html>
