@@ -178,8 +178,8 @@
     const exclEl     = document.querySelector('#excl');
 
     /* ---------- 調整用の設定 ---------- */
-    const REACTION_MS = 1400;   // 目を閉じて「！」を出している時間
-    const POYO_MS     = 1000;   // ぽよっ動作の長さ（REACTION_MS以下）
+    const REACTION_MS = 1400;   // アニメーション全体の時間（1.4秒）
+    const POYO_MS     = 1000;   // ぽよっ動作の長さ
 
     // ぽよっのキーフレーム: [時間(0-1), scaleX, scaleY, 跳ね(y)]
     const POYO_KEYS = [
@@ -223,27 +223,50 @@
 
     const wait = ms => new Promise(r => setTimeout(r, ms));
 
-    function setReactionVisual(on) {
-      charNormal.object3D.visible = !on;
-      charClosed.object3D.visible = on;
-      exclEl.object3D.visible     = on;
-      // A-Frameの属性側も同期（raycasterや再描画のずれ防止）
-      charNormal.setAttribute('visible', !on);
-      charClosed.setAttribute('visible', on);
-      exclEl.setAttribute('visible', on);
+    // パラパラ漫画風に特定のフレーム（画像状態）を表示する関数
+    function showFrame(type) {
+      if (type === 'normal') {
+        charNormal.object3D.visible = true;
+        charClosed.object3D.visible = false;
+        exclEl.object3D.visible     = false;
+        charNormal.setAttribute('visible', true);
+        charClosed.setAttribute('visible', false);
+        exclEl.setAttribute('visible', false);
+      } else if (type === 'closed') {
+        charNormal.object3D.visible = false;
+        charClosed.object3D.visible = true;
+        exclEl.object3D.visible     = false;
+        charNormal.setAttribute('visible', false);
+        charClosed.setAttribute('visible', true);
+        exclEl.setAttribute('visible', false);
+      } else if (type === 'excl') {
+        charNormal.object3D.visible = false;
+        charClosed.object3D.visible = true;
+        exclEl.object3D.visible     = true;
+        charNormal.setAttribute('visible', false);
+        charClosed.setAttribute('visible', true);
+        exclEl.setAttribute('visible', true);
+      }
     }
 
     async function react() {
       if (reacting) return;      // リアクション中のタップは無視
       reacting = true;
       try {
-        setReactionVisual(true); // test.png2 + test3.png
+        // パラパラ漫画風のコマ送り演出
+        showFrame('normal');
+        await wait(150);
+        showFrame('closed');
+        await wait(150);
+        showFrame('excl');
+
+        // ぽよっアニメーションと「！」表示状態を同期して待機
         await Promise.all([playPoyo(POYO_MS), wait(REACTION_MS)]);
       } finally {
-        setReactionVisual(false); // 「！」を消して test.png に戻す
+        showFrame('normal'); // 通常の絵に戻す
         poyoEl.object3D.scale.set(1, 1, 1);
         poyoEl.object3D.position.set(0, 0, 0);
-        reacting = false;         // 浮遊アニメは常時動作しているのでそのまま通常状態へ
+        reacting = false;         // ロック解除
       }
     }
 
