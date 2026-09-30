@@ -109,7 +109,7 @@
   <div id="overlay">
     <div class="start-card">
       <h2>WebAR デモ</h2>
-      <p>ボタンを押してカメラを許可し、マーカーにかざしてください。キャラクターをタップすると反応します。</p>
+      <p>ボタンを押してカメラを許可し、マーカーにかざしてください。キャラが自動で瞬きし、タップするとリアクションします。</p>
       <button id="start-btn">ARを開始する</button>
     </div>
   </div>
@@ -178,7 +178,7 @@
     const exclEl     = document.querySelector('#excl');
 
     /* ---------- 調整用の設定 ---------- */
-    const REACTION_MS = 1400;   // アニメーション全体の時間（1.4秒）
+    const REACTION_MS = 1400;   // タップ時のリアクション時間（1.4秒）
     const POYO_MS     = 1000;   // ぽよっ動作の長さ
 
     // ぽよっのキーフレーム: [時間(0-1), scaleX, scaleY, 跳ね(y)]
@@ -191,7 +191,7 @@
     ];
     /* ---------------------------------- */
 
-    let reacting = false;  // 連打防止ロック
+    let reacting = false;  // 連打防止＆自動瞬きとの競合防止ロック
 
     const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
@@ -223,7 +223,7 @@
 
     const wait = ms => new Promise(r => setTimeout(r, ms));
 
-    // パラパラ漫画風に特定のフレーム（画像状態）を表示する関数
+    // フレーム（画像状態）を切り替える関数
     function showFrame(type) {
       if (type === 'normal') {
         charNormal.object3D.visible = true;
@@ -249,6 +249,7 @@
       }
     }
 
+    // タップ時のリアクション
     async function react() {
       if (reacting) return;      // リアクション中のタップは無視
       reacting = true;
@@ -273,6 +274,24 @@
     charNormal.addEventListener('click', react);
     charClosed.addEventListener('click', react);
 
+    /* ---------- 自動瞬き（常時ループ） ---------- */
+    async function startBlinking() {
+      while (true) {
+        // 2秒〜4秒のランダムな間隔で待機してから瞬きする
+        const randomWait = Math.random() * 2000 + 2000; 
+        await wait(randomWait);
+
+        // タップ中（リアクション中）じゃなければ瞬きさせる
+        if (!reacting) {
+          reacting = true; // 瞬き中はタップや他の割り込みをロック
+          showFrame('closed');
+          await wait(150); // 目を閉じている時間（0.15秒）
+          showFrame('normal');
+          reacting = false;
+        }
+      }
+    }
+
     /* ---------- AR起動 ---------- */
     startBtn.addEventListener('click', async () => {
       statusBar.textContent = 'カメラ初期化中...';
@@ -281,6 +300,9 @@
         await arSystem.start();
         overlay.style.display = 'none';
         statusBar.textContent = 'マーカーを探索中...';
+        
+        // ARが開始したら自動瞬きをスタート！
+        startBlinking();
       } catch (err) {
         console.error(err);
         statusBar.textContent = '起動エラー: ' + err.message;
